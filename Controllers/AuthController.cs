@@ -8,7 +8,7 @@ using System.Data;
 namespace GabImecuApi.Controllers;
 
 [ApiController]
-[Route("api/[controller]")]
+[Route("[controller]")]
 public class AuthController : ControllerBase
 {
     private readonly BdGabineteContext _db;

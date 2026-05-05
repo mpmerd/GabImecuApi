@@ -1,66 +1,92 @@
 #!/bin/bash
 # =====================================================
-# deploy_gabimecu_api.sh
-# Compila y despliega la API en www.gabimecu.somee.com/api/
+# deploy.sh — Despliega GabImecuApi en somee.com/api/
+# Uso: ./deploy.sh
 # =====================================================
 
-set -e
-
-# === CONFIGURACIÓN ===
-PROJECT_DIR="$HOME/.openclaw/workspace/GabImecuApi"
+PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PUBLISH_DIR="$PROJECT_DIR/publish"
 
-# Credenciales desde variables de entorno
-FTP_HOST="${GABIMECU_FTP_HOST:?Error: Define GABIMECU_FTP_HOST}"
-FTP_USER="${GABIMECU_FTP_USER:?Error: Define GABIMECU_FTP_USER}"
-FTP_PASSWORD="${GABIMECU_FTP_PASSWORD:?Error: Define GABIMECU_FTP_PASSWORD}"
+FTP_SERVER="155.254.246.43"
+FTP_USER="mpmerd"
+FTP_PASSWORD="syzpoZ-birxek-tymre0"
+FTP_PATH="www.gabimecu.somee.com/api/"
 
-# Extraer solo el hostname (sin ftp:// ni ruta)
-FTP_SERVER="${FTP_HOST#ftp://}"      # quitar ftp://
-FTP_SERVER="${FTP_SERVER#ftps://}"   # quitar ftps://
-FTP_SERVER="${FTP_SERVER%%/*}"       # quitar ruta después del host
+CURL_OPTS="--user ${FTP_USER}:${FTP_PASSWORD} --ftp-create-dirs --retry 3 --retry-delay 2 --connect-timeout 30"
 
-# La ruta base en el FTP (todo lo que va después del host en FTP_HOST)
-FTP_BASE="${FTP_HOST#*${FTP_SERVER}}"
-# Quitar / inicial si existe para evitar doble slash
-FTP_BASE="${FTP_BASE#/}"
-
-# Ruta final: base + api/
-FTP_PATH="${FTP_BASE}/api/"
-
-echo "🔨 Compilando y publicando API..."
+# --- Paso 1: Compilar (solo win-x64, sin runtimes innecesarios) ---
+echo "==> Compilando API (win-x64)..."
 cd "$PROJECT_DIR"
 rm -rf "$PUBLISH_DIR"
-dotnet restore
-dotnet publish -c Release -o "$PUBLISH_DIR" --self-contained false
-cp "$PROJECT_DIR/web.config" "$PUBLISH_DIR/"
+dotnet publish -c Release -o "$PUBLISH_DIR" --nologo 2>&1 | tail -5
+if [ $? -ne 0 ]; then echo "ERROR: Falló la compilación."; exit 1; fi
+echo "OK — $(find "$PUBLISH_DIR" -type f | wc -l | tr -d ' ') archivos"
 
-echo "✅ Publicación exitosa en $PUBLISH_DIR"
-echo ""
-echo "📤 Servidor: $FTP_SERVER"
-echo "📤 Ruta:     $FTP_PATH"
-echo ""
+# --- Paso 2: Poner app_offline.htm para que IIS libere los DLLs ---
+echo "==> Poniendo app offline en IIS..."
+echo "<html><body>Actualizando, vuelve en un momento...</body></html>" > /tmp/app_offline.htm
+curl -sS -T /tmp/app_offline.htm \
+    "ftp://${FTP_SERVER}/${FTP_PATH}app_offline.htm" \
+    $CURL_OPTS
+echo "OK — IIS detuvo la app"
+sleep 3
 
-TOTAL=$(find "$PUBLISH_DIR" -type f | wc -l)
-COUNT=0
-
-find "$PUBLISH_DIR" -type f | while read -r file; do
-    REL="${file#$PUBLISH_DIR/}"
-    COUNT=$((COUNT + 1))
-    echo "  [$COUNT/$TOTAL] $REL"
-    
-    curl -sS -T "$file" \
-         "ftp://${FTP_SERVER}/${FTP_PATH}${REL}" \
-         --user "${FTP_USER}:${FTP_PASSWORD}" \
-         --ftp-create-dirs || {
-        echo "❌ Error subiendo $REL"
-        exit 1
-    }
+# --- Paso 3: Limpiar archivos innecesarios del servidor (subidos en deployments anteriores) ---
+echo "==> Limpiando archivos innecesarios del servidor..."
+ARCHIVOS_BORRAR=(
+    "runtimes/win-arm/native/Microsoft.Data.SqlClient.SNI.dll"
+    "runtimes/win-arm64/native/Microsoft.Data.SqlClient.SNI.dll"
+    "runtimes/win-x86/native/Microsoft.Data.SqlClient.SNI.dll"
+    "runtimes/unix/lib/net6.0/Microsoft.Data.SqlClient.dll"
+    "runtimes/unix/lib/net6.0/System.Drawing.Common.dll"
+    "runtimes/win/lib/net6.0/Microsoft.Data.SqlClient.dll"
+    "runtimes/win/lib/net6.0/Microsoft.Win32.SystemEvents.dll"
+    "runtimes/win/lib/net6.0/System.Drawing.Common.dll"
+    "runtimes/win/lib/net6.0/System.Runtime.Caching.dll"
+    "runtimes/win/lib/net6.0/System.Security.Cryptography.ProtectedData.dll"
+    "runtimes/win/lib/net6.0/System.Windows.Extensions.dll"
+    "GabImecuApi.staticwebassets.endpoints.json"
+    "appsettings.Development.json"
+)
+for f in "${ARCHIVOS_BORRAR[@]}"; do
+    curl -sS "ftp://${FTP_SERVER}/" \
+        --user "${FTP_USER}:${FTP_PASSWORD}" \
+        -Q "DELE ${FTP_PATH}${f}" \
+        --connect-timeout 15 2>/dev/null \
+        && echo "  Borrado: $f" || echo "  (no existia): $f"
 done
 
+# --- Paso 4: Subir todos los archivos ---
+TOTAL=$(find "$PUBLISH_DIR" -type f | wc -l | tr -d ' ')
+COUNT=0
+echo "==> Subiendo $TOTAL archivos..."
+
+find "$PUBLISH_DIR" -type f | sort | while read -r file; do
+    REL="${file#$PUBLISH_DIR/}"
+    COUNT=$((COUNT + 1))
+
+    curl -sS -T "$file" \
+        "ftp://${FTP_SERVER}/${FTP_PATH}${REL}" \
+        $CURL_OPTS 2>&1
+    if [ $? -ne 0 ]; then
+        echo "  [REINTENTO] $REL"
+        sleep 2
+        curl -sS -T "$file" \
+            "ftp://${FTP_SERVER}/${FTP_PATH}${REL}" \
+            $CURL_OPTS 2>&1 || echo "  [ERROR] $REL"
+    else
+        echo "  [$COUNT/$TOTAL] OK: $REL"
+    fi
+done
+
+# --- Paso 5: Eliminar app_offline.htm para reactivar la app ---
+echo "==> Reactivando app en IIS..."
+curl -sS "ftp://${FTP_SERVER}/" \
+    --user "${FTP_USER}:${FTP_PASSWORD}" \
+    -Q "DELE ${FTP_PATH}app_offline.htm" \
+    --connect-timeout 30
+echo "OK"
+
 echo ""
-echo "✅ Despliegue completado"
-echo "🌐 https://www.gabimecu.somee.com/api/"
-echo ""
-echo "📋 Configura en Somee.com la variable de entorno:"
-echo "   GABIMECU_CONNECTION_STRING"
+echo "==> Deploy completado."
+echo "    Verifica: https://www.gabimecu.somee.com/api/catalogos/categorias"

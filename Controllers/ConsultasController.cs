@@ -1,12 +1,15 @@
 using GabImecuApi.Data;
 using GabImecuApi.Models;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using System.Data;
+using System.Text.Json;
 
 namespace GabImecuApi.Controllers;
 
 [ApiController]
-[Route("api/[controller]")]
+[Route("[controller]")]
 public class ConsultasController : ControllerBase
 {
     private readonly BdGabineteContext _db;
@@ -116,5 +119,57 @@ public class ConsultasController : ControllerBase
                             }).ToListAsync();
 
         return Ok(result);
+    }
+
+    /// <summary>
+    /// Ejecuta una consulta SQL generada por IA.
+    /// Solo se permiten sentencias SELECT y están bloqueadas las tablas sensibles.
+    /// </summary>
+    [HttpPost("ia")]
+    public async Task<ActionResult<object>> EjecutarConsultaIA([FromBody] ConsultaIaRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Sql))
+            return BadRequest(new { error = "La consulta SQL no puede estar vacía." });
+
+        var sqlUpper = request.Sql.Trim().ToUpperInvariant();
+
+        // Solo SELECT permitido
+        if (!sqlUpper.StartsWith("SELECT"))
+            return BadRequest(new { error = "Solo se permiten consultas SELECT." });
+
+        // Bloquear tablas sensibles
+        var tablasProhibidas = new[] { "T_LOGIN", "T_LOGS" };
+        foreach (var tabla in tablasProhibidas)
+        {
+            if (sqlUpper.Contains(tabla))
+                return BadRequest(new { error = $"Acceso denegado: la tabla {tabla} está restringida." });
+        }
+
+        // Bloquear columnas de contraseña
+        var columnasProhibidas = new[] { "CONTRASEÑA", "PASSWORD", "CONTRASENA", "CLAVE", "PASS" };
+        foreach (var col in columnasProhibidas)
+        {
+            if (sqlUpper.Contains(col))
+                return BadRequest(new { error = $"Acceso denegado: columna sensible detectada." });
+        }
+
+        var connectionString = _db.Database.GetConnectionString();
+        var rows = new List<Dictionary<string, object?>>();
+
+        using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync();
+        using var command = new SqlCommand(request.Sql, connection);
+        command.CommandTimeout = 30;
+
+        using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var row = new Dictionary<string, object?>();
+            for (int i = 0; i < reader.FieldCount; i++)
+                row[reader.GetName(i)] = reader.IsDBNull(i) ? null : reader.GetValue(i);
+            rows.Add(row);
+        }
+
+        return Ok(rows);
     }
 }

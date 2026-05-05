@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 namespace GabImecuApi.Controllers;
 
 [ApiController]
-[Route("api/[controller]")]
+[Route("[controller]")]
 public class CatalogosController : ControllerBase
 {
     private readonly BdGabineteContext _db;

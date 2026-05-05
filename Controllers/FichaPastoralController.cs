@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 namespace GabImecuApi.Controllers;
 
 [ApiController]
-[Route("api/[controller]")]
+[Route("[controller]")]
 public class FichaPastoralController : ControllerBase
 {
     private readonly BdGabineteContext _db;
@@ -34,7 +34,7 @@ public class FichaPastoralController : ControllerBase
         var iglesia = await _db.TIglesia.FirstOrDefaultAsync(i => i.IdIglesia == pastor.IdIglesia);
         var fechaOrdenacion = await _db.TOrdenacions
             .Where(o => o.IdPastor == pastorId)
-            .Select(o => (DateTime?)o.Fecha)
+            .Select(o => (DateOnly?)o.Fecha)
             .FirstOrDefaultAsync();
 
         response.IglesiaInfo = new PastorInfoIglesiaDto
@@ -42,7 +42,9 @@ public class FichaPastoralController : ControllerBase
             Iglesia = iglesia?.Nombre ?? "",
             Direccion = iglesia?.Direccion ?? "",
             Telefono = iglesia?.Telefono ?? "",
-            FechaOrdenacion = fechaOrdenacion
+            FechaOrdenacion = fechaOrdenacion.HasValue
+                ? fechaOrdenacion.Value.ToDateTime(TimeOnly.MinValue)
+                : null
         };
 
         // Info del pastor
@@ -60,7 +62,7 @@ public class FichaPastoralController : ControllerBase
             .ToListAsync();
         response.IniciosHistorial = await _db.THistorials
             .Where(h => h.IdPastor == pastorId)
-            .Select(h => (DateTime?)h.FechInic)
+            .Select(h => (DateTime?)h.FechInic.ToDateTime(TimeOnly.MinValue))
             .ToListAsync();
 
         // Familia
@@ -105,7 +107,7 @@ public class FichaPastoralController : ControllerBase
         var fechaOrdenacion = pastorIds.Any()
             ? await _db.TOrdenacions
                 .Where(o => pastorIds.Contains(o.IdPastor))
-                .Select(o => (DateTime?)o.Fecha)
+                .Select(o => (DateOnly?)o.Fecha)
                 .FirstOrDefaultAsync()
             : null;
 
@@ -114,7 +116,9 @@ public class FichaPastoralController : ControllerBase
             Iglesia = iglesia.Nombre,
             Direccion = iglesia.Direccion,
             Telefono = iglesia.Telefono,
-            FechaOrdenacion = fechaOrdenacion
+            FechaOrdenacion = fechaOrdenacion.HasValue
+                ? fechaOrdenacion.Value.ToDateTime(TimeOnly.MinValue)
+                : null
         };
 
         // Info de pastores
@@ -132,7 +136,7 @@ public class FichaPastoralController : ControllerBase
             .ToListAsync();
         response.IniciosHistorial = await _db.THistorials
             .Where(h => pastorIds.Contains(h.IdPastor))
-            .Select(h => (DateTime?)h.FechInic)
+            .Select(h => (DateTime?)h.FechInic.ToDateTime(TimeOnly.MinValue))
             .ToListAsync();
 
         // Familia

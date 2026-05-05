@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 namespace GabImecuApi.Controllers;
 
 [ApiController]
-[Route("api/[controller]")]
+[Route("[controller]")]
 public class OtrosController : ControllerBase
 {
     private readonly BdGabineteContext _db;
@@ -39,10 +39,12 @@ public class OtrosController : ControllerBase
         [FromQuery] DateTime desde,
         [FromQuery] DateTime hasta)
     {
+        var desdeDate = DateOnly.FromDateTime(desde);
+        var hastaDate = DateOnly.FromDateTime(hasta);
         var result = await (from o in _db.TOrdenacions
                             join p in _db.TPastors on o.IdPastor equals p.IdPastor
                             join i in _db.TIglesia on p.IdIglesia equals i.IdIglesia
-                            where o.Fecha >= desde && o.Fecha <= hasta
+                            where o.Fecha >= desdeDate && o.Fecha <= hastaDate
                             orderby i.Distrito, o.Fecha
                             select new PastorReporteConFechaDto
                             {
@@ -62,10 +64,12 @@ public class OtrosController : ControllerBase
         [FromQuery] DateTime desde,
         [FromQuery] DateTime hasta)
     {
+        var desdeDate = DateOnly.FromDateTime(desde);
+        var hastaDate = DateOnly.FromDateTime(hasta);
         var result = await (from h in _db.THistorials
                             join p in _db.TPastors on h.IdPastor equals p.IdPastor
                             join i in _db.TIglesia on p.IdIglesia equals i.IdIglesia
-                            where h.FechInic >= desde && h.FechInic <= hasta
+                            where h.FechInic >= desdeDate && h.FechInic <= hastaDate
                             orderby i.Distrito, i.Nombre, h.FechInic
                             select new PastorReporteConFechaDto
                             {

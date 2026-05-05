@@ -45,14 +45,14 @@ public class THistorial
     public int IdHistorial { get; set; }
     public int IdPastor { get; set; }
     public string IgPastoreada { get; set; } = string.Empty;
-    public DateTime FechInic { get; set; }
+    public DateOnly FechInic { get; set; }
 }
 
 public class TOrdenacion
 {
     public int IdOrdenacion { get; set; }
     public int IdPastor { get; set; }
-    public DateTime Fecha { get; set; }
+    public DateOnly Fecha { get; set; }
 }
 
 public class TObispo
@@ -122,7 +122,7 @@ public class PastorReporteConFechaDto
     public string? Iglesia { get; set; }
     public string? Categoria { get; set; }
     public string Pastor { get; set; } = string.Empty;
-    public DateTime Fecha { get; set; }
+    public DateOnly Fecha { get; set; }
 }
 
 public class FichaPastoralResponse
@@ -156,4 +156,38 @@ public class LoginResponse
     public string? Usuario { get; set; }
     public bool EscrituraYLectura { get; set; }
     public string? Mensaje { get; set; }
+}
+
+public class ConsultaIaRequest
+{
+    public string Sql { get; set; } = string.Empty;
+}
+
+// ====== Schema DTOs para MCP ======
+
+public class SchemaResponse
+{
+    public List<SchemaTableDto> Tables { get; set; } = new();
+}
+
+public class SchemaTableDto
+{
+    public string Name { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public List<SchemaColumnDto> Columns { get; set; } = new();
+    public List<SchemaForeignKeyDto> ForeignKeys { get; set; } = new();
+}
+
+public class SchemaColumnDto
+{
+    public string Name { get; set; } = string.Empty;
+    public string Type { get; set; } = string.Empty;
+    public bool IsNullable { get; set; }
+}
+
+public class SchemaForeignKeyDto
+{
+    public string ColumnName { get; set; } = string.Empty;
+    public string ReferencedTable { get; set; } = string.Empty;
+    public string ReferencedColumn { get; set; } = string.Empty;
 }
