@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 namespace GabImecuApi.Controllers;
 
 [ApiController]
-[Route("[controller]")]
+[Route("ficha-pastoral")]
 public class FichaPastoralController : ControllerBase
 {
     private readonly BdGabineteContext _db;
